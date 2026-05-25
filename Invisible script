@@ -1,0 +1,266 @@
+local p = game:GetService("Players")
+local rs = game:GetService("RunService")
+local uis = game:GetService("UserInputService")
+local ws = game:GetService("Workspace")
+local lp = p.LocalPlayer
+local cam = ws.CurrentCamera
+
+local active = false
+local ghost = nil
+local loop = nil
+local staticPos = nil
+local lastSafeCFrame = nil
+
+local realRoot = nil
+local ghostRoot = nil
+
+local oldIndex
+oldIndex = hookmetamethod(game, "__index", function(self, key)
+    if active and (key == "CFrame" or key == "Position") then
+        if self == realRoot and ghostRoot then
+            if key == "CFrame" then
+                return ghostRoot.CFrame
+            elseif key == "Position" then
+                return ghostRoot.Position
+            end
+        end
+    end
+    return oldIndex(self, key)
+end)
+
+local old = game.CoreGui:FindFirstChild("InvisibleGUI_v6")
+if old then old:Destroy() end
+
+local sg = Instance.new("ScreenGui", game.CoreGui)
+sg.Name = "InvisibleGUI_v6"
+sg.ResetOnSpawn = false
+
+local mf = Instance.new("Frame", sg)
+mf.Size = UDim2.new(0, 160, 0, 110)
+mf.Position = UDim2.new(0.5, -80, 0.5, -55)
+mf.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+mf.BackgroundTransparency = 0.3
+mf.BorderSizePixel = 0
+
+local mc = Instance.new("UICorner", mf)
+mc.CornerRadius = UDim.new(0, 12)
+
+local tb = Instance.new("Frame", mf)
+tb.Size = UDim2.new(1, 0, 0, 35)
+tb.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+tb.BackgroundTransparency = 0.2
+tb.BorderSizePixel = 0
+
+local tc = Instance.new("UICorner", tb)
+tc.CornerRadius = UDim.new(0, 12)
+
+local tt = Instance.new("TextLabel", tb)
+tt.Size = UDim2.new(1, 0, 1, 0)
+tt.Text = "Invisible script"
+tt.TextColor3 = Color3.new(1, 1, 1)
+tt.Font = Enum.Font.GothamBold
+tt.TextSize = 14
+tt.BackgroundTransparency = 1
+
+local btn = Instance.new("TextButton", mf)
+btn.Size = UDim2.new(0.85, 0, 0, 45)
+btn.Position = UDim2.new(0.075, 0, 0.45, 0)
+btn.Text = "Invisible: OFF"
+btn.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+btn.BackgroundTransparency = 0.1
+btn.TextColor3 = Color3.new(1, 1, 1)
+btn.Font = Enum.Font.GothamSemibold
+btn.TextSize = 14
+btn.BorderSizePixel = 0
+
+local bc = Instance.new("UICorner", btn)
+bc.CornerRadius = UDim.new(0, 8)
+
+local dr, ds, sp, di
+tb.InputBegan:Connect(function(i)
+    if not dr and (i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch) then
+        dr = true
+        di = i
+        ds = i.Position
+        sp = mf.Position
+        
+        local changedConn
+        changedConn = i.Changed:Connect(function()
+            if i.UserInputState == Enum.UserInputState.End then
+                dr = false
+                di = nil
+                if changedConn then
+                    changedConn:Disconnect()
+                    changedConn = nil
+                end
+            end
+        end)
+    end
+end)
+
+uis.InputChanged:Connect(function(i)
+    if dr and i == di then
+        local d = i.Position - ds
+        mf.Position = UDim2.new(sp.X.Scale, sp.X.Offset + d.X, sp.Y.Scale, sp.Y.Offset + d.Y)
+    end
+end)
+
+local function cleanUI()
+    btn.Text = "Invisible: OFF"
+    btn.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+end
+
+local function cleanGhost()
+    if ghost then 
+        ghost:Destroy() 
+        ghost = nil 
+    end
+    if loop then loop:Disconnect() loop = nil end
+    staticPos = nil
+    lastSafeCFrame = nil
+    realRoot = nil
+    ghostRoot = nil
+end
+
+local function cleanChar()
+    local char = lp.Character
+    local r = char and char:FindFirstChild("HumanoidRootPart")
+    local h = char and char:FindFirstChild("Humanoid")
+    
+    local targetCFrame = (ghostRoot and ghostRoot.CFrame) or lastSafeCFrame
+    
+    if r and targetCFrame then
+        r.CFrame = targetCFrame
+        r.AssemblyLinearVelocity = Vector3.zero
+        r.AssemblyAngularVelocity = Vector3.zero
+    end
+    
+    if char then
+        for _, v in char:GetChildren() do
+            if v:IsA("BasePart") and v.Name ~= "HumanoidRootPart" then
+                v.CanCollide = true
+            elseif v:IsA("Accessory") then
+                local handle = v:FindFirstChild("Handle")
+                if handle then handle.CanCollide = false end
+            end
+        end
+    end
+    
+    if h then
+        cam.CameraSubject = h
+        h.PlatformStand = false
+        h:ChangeState(Enum.HumanoidStateType.GettingUp)
+    end
+end
+
+local function reset()
+    active = false
+    cleanUI()
+    cleanChar()
+    cleanGhost()
+end
+
+btn.MouseButton1Click:Connect(function()
+    active = not active
+    local char = lp.Character
+    if not char or not char:FindFirstChild("HumanoidRootPart") or not char:FindFirstChild("Humanoid") then return end
+    local r = char.HumanoidRootPart
+    local h = char.Humanoid
+    
+    if active then
+        btn.Text = "Invisible: ON"
+        btn.BackgroundColor3 = Color3.fromRGB(0, 180, 0)
+        
+        realRoot = r
+        staticPos = r.CFrame * CFrame.new(0, -100, 0)
+        lastSafeCFrame = r.CFrame
+        
+        char.Archivable = true
+        ghost = char:Clone()
+        ghost.Parent = ws
+        char.Archivable = false
+        
+        for _, v in ghost:GetDescendants() do
+            if v:IsA("BasePart") then 
+                v.Transparency = 0.5 
+            elseif v:IsA("Accessory") then
+                local handle = v:FindFirstChild("Handle")
+                if handle and handle:IsA("BasePart") then
+                    handle.Transparency = 0.5
+                end
+            elseif v:IsA("LocalScript") or v:IsA("Script") then
+                v:Destroy()
+            end
+        end
+        
+        local gh = ghost:FindFirstChild("Humanoid")
+        ghostRoot = ghost:FindFirstChild("HumanoidRootPart")
+        
+        if gh then 
+            cam.CameraSubject = gh 
+            gh:SetStateEnabled(Enum.HumanoidStateType.Climbing, true)
+        end
+        h.PlatformStand = true
+        r.CFrame = staticPos
+        
+        for _, v in char:GetDescendants() do
+            if v:IsA("BasePart") then v.CanCollide = false end
+        end
+        
+        loop = rs.Heartbeat:Connect(function()
+            local limit = ws.FallenPartsDestroyHeight + 35
+            if ghost and ghost.Parent == ws and gh and gh.Health > 0 and ghostRoot and ghostRoot.Position.Y > limit and h and h.Health > 0 then
+                
+                if cam.CameraSubject ~= gh then
+                    cam.CameraSubject = gh
+                end
+
+                local currentState = gh:GetState()
+                
+                if currentState == Enum.HumanoidStateType.Climbing then
+                    gh.AutoRotate = true
+                else
+                    gh.AutoRotate = true
+                    lastSafeCFrame = ghostRoot.CFrame
+                    
+                    local targetLook = nil
+                    if uis.MouseBehavior == Enum.MouseBehavior.LockCenter then
+                        local look = cam.CFrame.LookVector
+                        targetLook = Vector3.new(look.X, 0, look.Z)
+                    elseif h.MoveDirection.Magnitude > 0.1 then
+                        targetLook = Vector3.new(h.MoveDirection.X, 0, h.MoveDirection.Z)
+                    end
+                    
+                    if targetLook and targetLook.Magnitude > 0.01 then
+                        local targetRot = CFrame.lookAt(ghostRoot.Position, ghostRoot.Position + targetLook.Unit)
+                        ghostRoot.CFrame = ghostRoot.CFrame:Lerp(targetRot, 0.4)
+                    end
+                end
+                
+                gh:Move(h.MoveDirection, false)
+                gh.Jump = h.Jump
+                
+                r.CFrame = staticPos
+                
+                local gv = ghostRoot.AssemblyLinearVelocity
+                r.AssemblyLinearVelocity = Vector3.new(
+                    math.clamp(gv.X, -100, 100),
+                    math.clamp(gv.Y, -100, 100),
+                    math.clamp(gv.Z, -100, 100)
+                )
+                r.AssemblyAngularVelocity = ghostRoot.AssemblyAngularVelocity
+                
+            else
+                reset()
+            end
+        end)
+    else
+        reset()
+    end
+end)
+
+lp.CharacterRemoving:Connect(function()
+    if active then
+        reset()
+    end
+end)
