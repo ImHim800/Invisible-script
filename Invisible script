@@ -16,23 +16,40 @@ local ghostRoot = nil
 
 local oldIndex
 oldIndex = hookmetamethod(game, "__index", function(self, key)
-    if active and (key == "CFrame" or key == "Position") then
-        if self == realRoot and ghostRoot then
-            if key == "CFrame" then
-                return ghostRoot.CFrame
-            elseif key == "Position" then
-                return ghostRoot.Position
-            end
+    if not active or checkcaller() or self ~= realRoot then
+        return oldIndex(self, key)
+    end
+    if ghostRoot and (key == "CFrame" or key == "Position") then
+        if key == "CFrame" then
+            return ghostRoot.CFrame
+        elseif key == "Position" then
+            return ghostRoot.Position
         end
     end
     return oldIndex(self, key)
 end)
 
-local old = game.CoreGui:FindFirstChild("InvisibleGUI_v6")
+local oldNewIndex
+oldNewIndex = hookmetamethod(game, "__newindex", function(self, key, value)
+    if not active or checkcaller() or self ~= realRoot then
+        return oldNewIndex(self, key, value)
+    end
+    if ghostRoot and (key == "CFrame" or key == "Position") then
+        if key == "CFrame" then
+            ghostRoot.CFrame = value
+        elseif key == "Position" then
+            ghostRoot.Position = value
+        end
+        return
+    end
+    return oldNewIndex(self, key, value)
+end)
+
+local old = game.CoreGui:FindFirstChild("InvisibleGUI_v7")
 if old then old:Destroy() end
 
 local sg = Instance.new("ScreenGui", game.CoreGui)
-sg.Name = "InvisibleGUI_v6"
+sg.Name = "InvisibleGUI_v7"
 sg.ResetOnSpawn = false
 
 local mf = Instance.new("Frame", sg)
@@ -120,6 +137,8 @@ local function cleanGhost()
     lastSafeCFrame = nil
     realRoot = nil
     ghostRoot = nil
+    cam.CameraType = Enum.CameraType.Custom
+    cam.FieldOfView = 70
 end
 
 local function cleanChar()
@@ -149,6 +168,11 @@ local function cleanChar()
     if h then
         cam.CameraSubject = h
         h.PlatformStand = false
+        h:SetStateEnabled(Enum.HumanoidStateType.Climbing, true)
+        h:SetStateEnabled(Enum.HumanoidStateType.FallingDown, true)
+        h:SetStateEnabled(Enum.HumanoidStateType.Running, true)
+        h.AutoRotate = true
+        h.Jump = false
         h:ChangeState(Enum.HumanoidStateType.GettingUp)
     end
 end
@@ -172,7 +196,7 @@ btn.MouseButton1Click:Connect(function()
         btn.BackgroundColor3 = Color3.fromRGB(0, 180, 0)
         
         realRoot = r
-        staticPos = r.CFrame * CFrame.new(0, -100, 0)
+        staticPos = CFrame.new(0, ws.FallenPartsDestroyHeight + 100, 0)
         lastSafeCFrame = r.CFrame
         
         char.Archivable = true
@@ -207,7 +231,7 @@ btn.MouseButton1Click:Connect(function()
             if v:IsA("BasePart") then v.CanCollide = false end
         end
         
-        loop = rs.Heartbeat:Connect(function()
+        loop = rs.Heartbeat:Connect(function(dt)
             local limit = ws.FallenPartsDestroyHeight + 35
             if ghost and ghost.Parent == ws and gh and gh.Health > 0 and ghostRoot and ghostRoot.Position.Y > limit and h and h.Health > 0 then
                 
@@ -217,23 +241,13 @@ btn.MouseButton1Click:Connect(function()
 
                 local currentState = gh:GetState()
                 
-                if currentState == Enum.HumanoidStateType.Climbing then
-                    gh.AutoRotate = true
-                else
-                    gh.AutoRotate = true
+                if currentState ~= Enum.HumanoidStateType.Climbing then
                     lastSafeCFrame = ghostRoot.CFrame
                     
-                    local targetLook = nil
                     if uis.MouseBehavior == Enum.MouseBehavior.LockCenter then
                         local look = cam.CFrame.LookVector
-                        targetLook = Vector3.new(look.X, 0, look.Z)
-                    elseif h.MoveDirection.Magnitude > 0.1 then
-                        targetLook = Vector3.new(h.MoveDirection.X, 0, h.MoveDirection.Z)
-                    end
-                    
-                    if targetLook and targetLook.Magnitude > 0.01 then
-                        local targetRot = CFrame.lookAt(ghostRoot.Position, ghostRoot.Position + targetLook.Unit)
-                        ghostRoot.CFrame = ghostRoot.CFrame:Lerp(targetRot, 0.4)
+                        local targetRot = CFrame.lookAt(ghostRoot.Position, ghostRoot.Position + Vector3.new(look.X, 0, look.Z))
+                        ghostRoot.CFrame = ghostRoot.CFrame:Lerp(targetRot, math.clamp(dt * 25, 0, 1))
                     end
                 end
                 
@@ -243,11 +257,11 @@ btn.MouseButton1Click:Connect(function()
                 r.CFrame = staticPos
                 
                 local gv = ghostRoot.AssemblyLinearVelocity
-                r.AssemblyLinearVelocity = Vector3.new(
-                    math.clamp(gv.X, -100, 100),
-                    math.clamp(gv.Y, -100, 100),
-                    math.clamp(gv.Z, -100, 100)
-                )
+                if gv.Magnitude > 120 then
+                    gv = gv.Unit * 120
+                end
+                
+                r.AssemblyLinearVelocity = gv
                 r.AssemblyAngularVelocity = ghostRoot.AssemblyAngularVelocity
                 
             else
