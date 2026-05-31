@@ -14,9 +14,22 @@ local lastSafeCFrame = nil
 local realRoot = nil
 local ghostRoot = nil
 
+local function isBannedCaller()
+    for i = 2, 5 do
+        local src = debug.info(i, "s")
+        if src then
+            local lower = string.lower(src)
+            if string.find(lower, "cheat") or string.find(lower, "ac") or string.find(lower, "anti") or string.find(lower, "adonet") or string.find(lower, "detection") or string.find(lower, "security") then
+                return true
+            end
+        end
+    end
+    return false
+end
+
 local oldIndex
 oldIndex = hookmetamethod(game, "__index", function(self, key)
-    if not active or checkcaller() or self ~= realRoot then
+    if not active or checkcaller() or self ~= realRoot or isBannedCaller() then
         return oldIndex(self, key)
     end
     if ghostRoot and (key == "CFrame" or key == "Position") then
@@ -31,7 +44,7 @@ end)
 
 local oldNewIndex
 oldNewIndex = hookmetamethod(game, "__newindex", function(self, key, value)
-    if not active or checkcaller() or self ~= realRoot then
+    if not active or checkcaller() or self ~= realRoot or isBannedCaller() then
         return oldNewIndex(self, key, value)
     end
     if ghostRoot and (key == "CFrame" or key == "Position") then
@@ -45,11 +58,11 @@ oldNewIndex = hookmetamethod(game, "__newindex", function(self, key, value)
     return oldNewIndex(self, key, value)
 end)
 
-local old = game.CoreGui:FindFirstChild("InvisibleGUI_v7")
+local old = game.CoreGui:FindFirstChild("InvisibleGUI_v8")
 if old then old:Destroy() end
 
 local sg = Instance.new("ScreenGui", game.CoreGui)
-sg.Name = "InvisibleGUI_v7"
+sg.Name = "InvisibleGUI_v8"
 sg.ResetOnSpawn = false
 
 local mf = Instance.new("Frame", sg)
